@@ -1,7 +1,8 @@
+from openpyxl import Workbook
 import os
 import re
 
-
+# renaming folder
 def edit_folder():
     # for root, dirs, files in os.walk("."):
     #     if "Scan Logs" in root:
@@ -17,6 +18,7 @@ def edit_folder():
         new_name = f"FDCCI-CEB{folder}"
         os.rename(f"{root}/{folder}", f"{root}/{new_name}")
 
+# get all file directory from the given folder
 def get_files(folder):
     scan = []
     entry = []
@@ -32,6 +34,7 @@ def get_files(folder):
 
     return { 'scan': scan, 'entry': entry }
 
+# each file will be analzye base on the folder they are belong
 def extract_result(files):
 
     records = {}
@@ -71,24 +74,68 @@ def extract_result(files):
             elif ext == '.txt':
                 if key == 'scan':  
                     count = get_infected_count(file)
-                    match = user_pattern.search(os.path.basename(file))
-                    user = match.group()[:-1].lower()
-
+                    if int(count) > 0:
+                        match = user_pattern.search(os.path.basename(file))
+                        user = match.group()[:-1].lower()                        
                 elif key == 'entry':
                     count = count_findings(file, 'authentication failure')
             
             if device_name in records:
                 if key in records[device_name]:
-                    records[device_name][key][user] = count
+                    records[device_name][key][user] = int(count)
                 else:
-                    records[device_name][key] = {user: count}
+                    records[device_name][key] = {user: int(count)}
             else:
-                records[device_name] = {key: {user: count}}
+                records[device_name] = {key: {user: int(count)}}
     
     return records
 
-if __name__ == '__main__':
+
+def generate_excel(data):
+    remarks = {
+        'scan': {
+            'default': 'n/a',
+            'ok': 'No infected files all are just false positive'
+        },
+        'entry': {
+            'default': 'No issues',
+            'ok': 'Incorrect Password input. No intrusion detected.'
+        }
+    }
+
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Log Scan Report"
+
+    worksheet['A1'] = 'Hostname'
+    worksheet['B1'] = 'Infected File Count'
+    worksheet['C1'] = 'Infected File Remarks'
+    worksheet['D1'] = 'Invalid Entry Count'
+    worksheet['E1'] = 'Invalid Entry Remarks'
+
+
+    sheet_data = []
+    # format data
+    for host in data:
+        scan_count = sum([item for item in data[host]['scan'].values()])
+        entry_count = data[host]['entry']['default']
+        scan_remark = remarks['scan']['ok'] if scan_count > 0 else remarks['scan']['default']
+        entry_remark = remarks['entry']['ok'] if entry_count > 0 else remarks['entry']['default']
+        sheet_data.append([host, scan_count, scan_remark, entry_count, entry_remark ])
+
+    sheet_data.sort()
+    for item in sheet_data:
+        worksheet.append(item)
+    workbook.save("generated_excel.xlsx")
+
+# execution function
+def main():
     input_folder = input("Drag folder here: ")
     folder = re.sub(r"'","",input_folder)
     files = get_files(folder)
     result = extract_result(files)
+    generate_excel(result)
+
+
+if __name__ == '__main__':
+    main()
